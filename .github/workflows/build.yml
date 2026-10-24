@@ -16,6 +16,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+      - name: Download hand model
+        run: |
+          mkdir -p app/src/main/assets
+          curl -L --fail -o app/src/main/assets/hand_landmarker.task \
+            https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
+          ls -l app/src/main/assets
       - run: gradle assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
@@ -28,4 +34,4 @@ jobs:
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk HeadScroll.apk
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest HeadScroll.apk --title "HeadScroll latest" --notes "Latest build" 
+          gh release create latest HeadScroll.apk --title "HeadScroll latest" --notes-file CHANGELOG.md
