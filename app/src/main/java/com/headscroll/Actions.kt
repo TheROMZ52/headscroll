@@ -20,11 +20,11 @@ enum class Trigger(
 ) {
     UP("up", "سر بالا", "⬆️", Action.NEXT),
     DOWN("down", "سر پایین", "⬇️", Action.PREV),
-    LEFT("left", "سر به چپ", "⬅️", Action.PREV_H),
-    RIGHT("right", "سر به راست", "➡️", Action.NEXT_H),
+    LEFT("left", "سر به چپ", "⬅️", Action.NONE),
+    RIGHT("right", "سر به راست", "➡️", Action.NONE),
     SMILE("smile", "لبخند", "😄", Action.NONE),
-    HAND_OK("ok", "علامت OK", "👌", Action.LIKE, true),
-    HAND_PINCH("pinch", "پینچ (استپ)", "🤏", Action.TAP, true),
+    HAND_OK("ok", "علامت OK", "👌", Action.NONE, true),
+    HAND_PINCH("pinch", "پینچ (استپ)", "🤏", Action.NONE, true),
     HAND_PALM("palm", "کف دست", "✋", Action.NONE, true),
     HAND_VICTORY("victory", "ویکتوری", "✌️", Action.NONE, true)
 }
