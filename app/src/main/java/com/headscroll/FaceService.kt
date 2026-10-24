@@ -65,6 +65,10 @@ class FaceService : LifecycleService() {
     private var calSumY = 0f
     private var calN = 0
     private var lastFaceAt = 0L
+    private var warmupUntil = 0L
+    private var idleSince = 0L
+    private lateinit var handExec: ExecutorService
+    private val handBusy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private var armed = true
     private var lastTrigger = 0L
@@ -100,6 +104,7 @@ class FaceService : LifecycleService() {
         LiveState.paused = false
         prefs = Prefs(this)
         executor = Executors.newSingleThreadExecutor()
+        handExec = Executors.newSingleThreadExecutor()
         detector = FaceDetection.getClient(
             FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
@@ -120,7 +125,6 @@ class FaceService : LifecycleService() {
         )
         ScrollAccessibilityService.onPackageChanged = {
             main.post {
-                if (prefs.autoCal && wizard == 0) resetBaseline()
                 applyCamera()
             }
         }
@@ -174,6 +178,7 @@ class FaceService : LifecycleService() {
         detector.close()
         hands?.close()
         executor.shutdown()
+        handExec.shutdown()
         super.onDestroy()
     }
 
@@ -223,7 +228,7 @@ class FaceService : LifecycleService() {
         // اگه Accessibility وصل نیست دوربین رو روشن نگه دار تا تست زنده کار کنه
         if (ScrollAccessibilityService.instance == null) return true
         val pk = ScrollAccessibilityService.currentPkg
-        if (pk == packageName) return true
+        if (pk.isEmpty() || pk == packageName) return true
         return prefs.targetPackages().contains(pk)
     }
 
@@ -259,7 +264,7 @@ class FaceService : LifecycleService() {
     @androidx.annotation.OptIn(ExperimentalGetImage::class)
     private fun analyze(proxy: ImageProxy) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastFrame < 66L) {
+        if (now - lastFrame < 40L) {
             proxy.close()
             return
         }
@@ -273,18 +278,29 @@ class FaceService : LifecycleService() {
 
         val h = hands
         if (h != null && h.available && wizard == 0 && handEnabled()) {
-            if (now - lastHand >= 110L) {
+            if (now - lastHand >= 150L && handBusy.compareAndSet(false, true)) {
                 lastHand = now
-                runCatching {
-                    val bmp = proxy.toBitmap()
-                    val rot = if (deg != 0) {
+                val bmp = runCatching {
+                    val raw = proxy.toBitmap()
+                    if (deg != 0) {
                         Bitmap.createBitmap(
-                            bmp, 0, 0, bmp.width, bmp.height,
+                            raw, 0, 0, raw.width, raw.height,
                             Matrix().apply { postRotate(deg.toFloat()) }, true
                         )
-                    } else bmp
-                    handNow = h.detect(rot)
-                    handAt = SystemClock.elapsedRealtime()
+                    } else raw
+                }.getOrNull()
+                if (bmp == null) {
+                    handBusy.set(false)
+                } else {
+                    handExec.execute {
+                        try {
+                            handNow = h.detect(bmp)
+                            handAt = SystemClock.elapsedRealtime()
+                        } catch (e: Throwable) {
+                        } finally {
+                            handBusy.set(false)
+                        }
+                    }
                 }
             }
         } else {
@@ -314,35 +330,15 @@ class FaceService : LifecycleService() {
         LiveState.calibrating = false
     }
 
-    private fun calibrateStep(now: Long, sp: Float, sy: Float) {
-        if (calStart == 0L) {
-            calStart = now
-            calN = 0
-            calSumP = 0f
-            calSumY = 0f
-        }
-        val t = now - calStart
-        LiveState.calibrating = true
-        LiveState.calProgress = min(1f, t / 1200f)
-        if (t > 250L) {
-            calSumP += sp
-            calSumY += sy
-            calN++
-        }
-        if (t >= 1200L && calN >= 4) {
-            baseP = calSumP / calN
-            baseY = calSumY / calN
-            LiveState.calibrating = false
-            armed = true
-            pending = null
-        }
-    }
-
     /** headEulerAngleX: مثبت = سر بالا؛ headEulerAngleY: مثبت = سمت راست تصویر دوربین (چپ کاربر) */
     private fun onFrame(face: Face?) {
         val now = SystemClock.elapsedRealtime()
         val hand = if (now - handAt < 350L) handNow else null
         LiveState.hand = hand?.emoji ?: ""
+
+        val pitchOn = prefs.action(Trigger.UP) != Action.NONE || prefs.action(Trigger.DOWN) != Action.NONE
+        val yawOn = prefs.action(Trigger.LEFT) != Action.NONE || prefs.action(Trigger.RIGHT) != Action.NONE
+        val smileOn = prefs.action(Trigger.SMILE) != Action.NONE
 
         var mag = 0f
         var smile = 0f
@@ -355,7 +351,7 @@ class FaceService : LifecycleService() {
             LiveState.face = true
             val gap = now - lastFaceAt
             lastFaceAt = now
-            if (gap > 2000L && prefs.autoCal && wizard == 0 && baseP != null) resetBaseline()
+            if (gap > 2000L) warmupUntil = now + 1200L
 
             val rx = face.headEulerAngleX
             val ry = face.headEulerAngleY
@@ -363,7 +359,7 @@ class FaceService : LifecycleService() {
             val sy = smY?.let { it + 0.5f * (ry - it) } ?: ry
             smP = sp
             smY = sy
-            smile = face.smilingProbability ?: 0f
+            smile = if (smileOn) (face.smilingProbability ?: 0f) else 0f
             LiveState.smile = smile
 
             if (wizard > 0) {
@@ -374,7 +370,12 @@ class FaceService : LifecycleService() {
             val bp = baseP
             val by = baseY
             if (bp == null || by == null) {
-                calibrateStep(now, sp, sy)
+                // بدون مرحله‌ی کالیبراسیون: همون لحظه‌ی اول حالت عادی رو یاد میگیره
+                baseP = sp
+                baseY = sy
+                warmupUntil = now + 1200L
+                armed = true
+                pending = null
             } else {
                 headReady = true
                 val sv = if (prefs.invertV) -1f else 1f
@@ -383,11 +384,11 @@ class FaceService : LifecycleService() {
                 val dy = (sy - by) * sh
                 LiveState.dPitch = dp
                 LiveState.dYaw = dy
-                val np = dp / prefs.pitchTh
-                val ny = dy / prefs.yawTh
+                val np = if (pitchOn) dp / prefs.pitchTh else 0f
+                val ny = if (yawOn) dy / prefs.yawTh else 0f
                 mag = max(abs(np), abs(ny))
                 headCand = when {
-                    mag >= 1f -> if (abs(np) >= abs(ny)) {
+                    mag >= 1f -> if (abs(np) * 1.25f >= abs(ny)) {
                         if (np > 0) Trigger.UP else Trigger.DOWN
                     } else {
                         if (ny > 0) Trigger.RIGHT else Trigger.LEFT
@@ -396,8 +397,10 @@ class FaceService : LifecycleService() {
                     else -> null
                 }
                 if (mag < 0.5f && armed && hand == null) {
-                    baseP = bp * 0.97f + sp * 0.03f
-                    baseY = by * 0.97f + sy * 0.03f
+                    // یادگیری آروم و خودکار؛ تو ۱.۲ ثانیه‌ی اول تندتر
+                    val al = if (now < warmupUntil) 0.15f else 0.03f
+                    baseP = bp + (sp - bp) * al
+                    baseY = by + (sy - by) * al
                 }
             }
         }
@@ -420,12 +423,23 @@ class FaceService : LifecycleService() {
 
         if (cand == null || prefs.action(cand) == Action.NONE) {
             pending = null
+            // اگه مدتی تو حالت جدیدی موندی (مثلاً گوشی رو پایین‌تر گرفتی) حالت عادی رو دوباره تنظیم کن
+            if (headReady && cand != null && !cand.hand) {
+                if (idleSince == 0L) idleSince = now
+                else if (now - idleSince > 2500L) {
+                    baseP = smP
+                    baseY = smY
+                    idleSince = 0L
+                }
+            } else {
+                idleSince = 0L
+            }
             return
         }
+        idleSince = 0L
         if (cand != pending) {
             pending = cand
             pendingSince = now
-            return
         }
         val hold = if (cand.hand) max(prefs.holdMs, 280) else prefs.holdMs
         if (now - pendingSince < hold || now - lastTrigger < prefs.cooldownMs) return

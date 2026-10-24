@@ -17,7 +17,7 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putInt("yawTh", v).apply()
 
     var holdMs: Int
-        get() = sp.getInt("holdMs", 120)
+        get() = sp.getInt("holdMs", 60)
         set(v) = sp.edit().putInt("holdMs", v).apply()
 
     var cooldownMs: Int
@@ -71,11 +71,22 @@ class Prefs(context: Context) {
         sp.edit().putString("act_" + t.key, a.name).apply()
     }
 
+    fun extrasOn(): Boolean =
+        listOf(Trigger.LEFT, Trigger.RIGHT, Trigger.HAND_OK, Trigger.HAND_PINCH).any { action(it) != Action.NONE }
+
+    /** پکیج ژست‌های اضافه: سر چپ/راست، 👌 لایک، 🤏 توقف */
+    fun setExtras(on: Boolean) {
+        setAction(Trigger.LEFT, if (on) Action.PREV_H else Action.NONE)
+        setAction(Trigger.RIGHT, if (on) Action.NEXT_H else Action.NONE)
+        setAction(Trigger.HAND_OK, if (on) Action.LIKE else Action.NONE)
+        setAction(Trigger.HAND_PINCH, if (on) Action.TAP else Action.NONE)
+    }
+
     fun applyPreset(i: Int) {
         val (p, y, h, c) = when (i) {
-            0 -> listOf(20, 28, 200, 1500)
-            2 -> listOf(10, 14, 60, 800)
-            else -> listOf(15, 20, 120, 1200)
+            0 -> listOf(20, 28, 150, 1500)
+            2 -> listOf(10, 14, 0, 800)
+            else -> listOf(15, 20, 60, 1200)
         }
         pitchTh = p; yawTh = y; holdMs = h; cooldownMs = c
     }

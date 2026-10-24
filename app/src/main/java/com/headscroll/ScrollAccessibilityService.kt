@@ -42,7 +42,7 @@ class ScrollAccessibilityService : AccessibilityService() {
         val p = Prefs(this)
         val pk = currentPkg
         if (pk == packageName) return false
-        if (p.allApps) return true
+        if (pk.isEmpty() || p.allApps) return true
         return p.targetPackages().contains(pk)
     }
 

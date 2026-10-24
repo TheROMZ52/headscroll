@@ -61,10 +61,20 @@ class MainActivity : ComponentActivity() {
     private var shownToday = 0
     private var shownTotal = 0
     private var startAfterPerm = false
+    private var autoFlow = false
+    private var accOpened = false
+    private var permPending = false
 
     private val permLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            if (startAfterPerm) {
+            permPending = false
+            if (autoFlow) {
+                if (hasCamera()) continueFlow()
+                else {
+                    autoFlow = false
+                    Toast.makeText(this, "بدون دسترسی دوربین کار نمیکنه", Toast.LENGTH_LONG).show()
+                }
+            } else if (startAfterPerm) {
                 if (hasCamera()) startFace()
                 else Toast.makeText(this, "بدون دسترسی دوربین کار نمیکنه", Toast.LENGTH_LONG).show()
             }
@@ -256,7 +266,6 @@ class MainActivity : ComponentActivity() {
         gc.addView(GaugeView(this, prefs, ui), ui.vlp(10, 10))
         lastTv = ui.label("", 14f, C.TEXT, true)
         gc.addView(lastTv)
-        gc.addView(ui.button("✨ کالیبراسیون هوشمند", false) { startWizard() }, ui.vlp(12, 0))
         col.addView(gc, ui.vlp(0, 12))
 
         // راه‌اندازی
@@ -351,6 +360,12 @@ class MainActivity : ComponentActivity() {
         // اکشن‌ها
         val ac = ui.card()
         ac.addView(ui.label("حرکت سر و صورت", 16f, C.TEXT, true))
+        ac.addView(ui.switchRow(
+            "ژست‌های اضافه",
+            "سر چپ/راست = سوایپ افقی، 👌 = لایک، 🤏 = پخش/توقف",
+            prefs.extrasOn()
+        ) { on -> prefs.setExtras(on); recreate() })
+        ac.addView(ui.divider(), ui.vlp(2, 2))
         Trigger.values().filter { !it.hand }.forEach { t -> ac.addView(triggerRow(t)) }
         ac.addView(ui.divider(), ui.vlp(6, 6))
         ac.addView(ui.label("ژست دست", 16f, C.TEXT, true), ui.vlp(6, 0))
@@ -371,12 +386,11 @@ class MainActivity : ComponentActivity() {
 
         // کالیبراسیون
         val cc = ui.card()
-        cc.addView(ui.label("کالیبراسیون", 16f, C.TEXT, true))
-        cc.addView(ui.switchRow("کالیبراسیون خودکار", "وقتی چهره برمیگرده یا اپ عوض میشه، حالت عادی سرت دوباره یاد گرفته میشه",
-            prefs.autoCal) { prefs.autoCal = it })
+        cc.addView(ui.label("پیشرفته", 16f, C.TEXT, true))
+        cc.addView(ui.label("کالیبراسیون کاملاً خودکاره و لازم نیست کاری بکنی. اینا فقط برای وقتیه که خواستی دقیق‌تر تنظیمش کنی.", 12f, C.SUB), ui.vlp(2, 6))
         cc.addView(ui.switchRow("برعکس کردن بالا/پایین", "اگه جهت‌ها برعکس بود", prefs.invertV) { prefs.invertV = it })
         cc.addView(ui.switchRow("برعکس کردن چپ/راست", null, prefs.invertH) { prefs.invertH = it })
-        cc.addView(ui.button("✨ کالیبراسیون هوشمند (۱۵ ثانیه)") { startWizard() }, ui.vlp(10, 0))
+        cc.addView(ui.button("✨ تنظیم دقیق زاویه‌ها (۱۵ ثانیه)") { startWizard() }, ui.vlp(10, 0))
         cc.addView(ui.button("🎯 کالیبره سریع", false) { sendToService(FaceService.ACTION_RECALIBRATE) }, ui.vlp(8, 0))
         col.addView(cc, ui.vlp(0, 0))
 
@@ -482,13 +496,42 @@ class MainActivity : ComponentActivity() {
 
     // ---------- اکشن‌ها ----------
 
+    private fun setupDone() = hasCamera() && ScrollAccessibilityService.instance != null
+
     private fun toggle() {
         if (LiveState.running) {
+            autoFlow = false
             stopService(Intent(this, FaceService::class.java))
+        } else if (setupDone()) {
+            startFace()
         } else {
-            requestStart()
+            autoFlow = true
+            continueFlow()
         }
         handler.postDelayed({ refresh() }, 350)
+    }
+
+    /** راه‌اندازی خودکار: دوربین ← Accessibility ← روشن شدن */
+    private fun continueFlow() {
+        if (permPending) return
+        if (!hasCamera()) {
+            permPending = true
+            val perms = mutableListOf(Manifest.permission.CAMERA)
+            if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+            permLauncher.launch(perms.toTypedArray())
+            return
+        }
+        if (ScrollAccessibilityService.instance == null) {
+            showAccDisclosure {
+                accOpened = true
+                Toast.makeText(this, "HeadScroll رو پیدا کن و روشنش کن، بعد برگرد", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            return
+        }
+        autoFlow = false
+        startFace()
+        Toast.makeText(this, "روشن شد ✨ برو تو اینستا و سرتو تکون بده", Toast.LENGTH_LONG).show()
     }
 
     private fun requestStart() {
@@ -542,6 +585,17 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         handler.post(loop)
+        if (autoFlow && accOpened) {
+            accOpened = false
+            handler.postDelayed({
+                if (ScrollAccessibilityService.instance != null) {
+                    continueFlow()
+                } else {
+                    autoFlow = false
+                    Toast.makeText(this, "Accessibility روشن نشد، دوباره دکمه رو بزن", Toast.LENGTH_LONG).show()
+                }
+            }, 700)
+        }
     }
 
     override fun onPause() {
@@ -583,10 +637,10 @@ class MainActivity : ComponentActivity() {
         statusTv.setTextColor(color)
         (pulseDot.background as GradientDrawable).setColor(color)
         statusSub.text = when {
-            !running -> "دکمه‌ی پایین رو بزن تا شروع شه"
+            !running -> "یه بار دکمه‌ی پایین رو بزن، بقیه‌ش خودکاره"
             paused -> "دوربین خاموشه تا ادامه بدی"
             !acc -> "⚠️ Accessibility فعال نیست، سوایپ زده نمیشه"
-            LiveState.cameraOn -> "دوربین فعاله؛ اپ هدف رو باز کن"
+            LiveState.cameraOn -> "آماده‌ست! برو تو اینستا و سرتو بده بالا یا پایین"
             else -> "دوربین خاموشه تا اپ هدف باز شه"
         }
         val active = running && !paused
@@ -595,7 +649,11 @@ class MainActivity : ComponentActivity() {
             pulse.cancel()
             pulseDot.scaleX = 1f; pulseDot.scaleY = 1f; pulseDot.alpha = 1f
         }
-        toggleBtn.text = if (running) "⏹ خاموش کردن" else "▶ روشن کردن"
+        toggleBtn.text = when {
+            running -> "⏹ خاموش کردن"
+            setupDone() -> "▶ روشن کردن"
+            else -> "🚀 راه‌اندازی و شروع"
+        }
         pauseBtn.visibility = if (running) View.VISIBLE else View.GONE
         pauseBtn.text = if (paused) "▶ ادامه" else "⏸ مکث"
 
