@@ -11,8 +11,9 @@ android {
         applicationId = "com.headscroll"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     compileOptions {
@@ -21,6 +22,9 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+    androidResources {
+        noCompress += "task"
     }
 }
 
@@ -35,4 +39,5 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$camerax")
 
     implementation("com.google.mlkit:face-detection:16.1.6")
+    implementation("com.google.mediapipe:tasks-vision:0.10.14")
 }
