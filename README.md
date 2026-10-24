@@ -35,3 +35,8 @@
 - **هوشمند**: ۱۵ ثانیه، بالا/پایین/چپ/راست رو نشون میدی و آستانه‌ها خودکار تنظیم میشن
 
 فونت: [Vazirmatn](https://github.com/rastikerdar/vazirmatn) (OFL). تغییرات: [CHANGELOG.md](CHANGELOG.md)
+
+## امنیت و حریم خصوصی
+- APK با کلید release ثابت امضا میشه ([Privacy Policy](PRIVACY.md))
+- اپ اینترنت نداره؛ دوربین و Accessibility فقط برای کنترل ژست‌ها استفاده میشن
+- اگه Play Protect هشدار داد: More details ← Scan app

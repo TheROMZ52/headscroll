@@ -22,16 +22,29 @@ jobs:
           curl -L --fail -o app/src/main/assets/hand_landmarker.task \
             https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
           ls -l app/src/main/assets
-      - run: gradle assembleDebug --no-daemon
+      - name: Decode signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          fi
+      - name: Build release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle assembleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: HeadScroll-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/release/app-release.apk
       - name: Publish release
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk HeadScroll.apk
+          cp app/build/outputs/apk/release/app-release.apk HeadScroll.apk
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest HeadScroll.apk --title "HeadScroll latest" --notes-file CHANGELOG.md

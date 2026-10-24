@@ -263,7 +263,9 @@ class MainActivity : ComponentActivity() {
         setupCard = ui.card()
         setupCard.addView(ui.label("🚀 راه‌اندازی", 16f, C.TEXT, true))
         accState = setupRow(setupCard, "دسترسی Accessibility", "برای زدن سوایپ و تپ") {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            showAccDisclosure {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
         }
         camState = setupRow(setupCard, "دسترسی دوربین", "برای دیدن سر و دستت") {
             startAfterPerm = false
@@ -431,6 +433,12 @@ class MainActivity : ComponentActivity() {
         oc.addView(ui.button("🔋 رفع محدودیت باتری", false) {
             startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }, ui.vlp(8, 0))
+        oc.addView(ui.button("🔒 حریم خصوصی و دسترسی‌ها", false) {
+            showAccDisclosure(force = true) {}
+        }, ui.vlp(8, 0))
+        oc.addView(ui.button("📄 متن کامل Privacy Policy", false) {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/TheROMZ52/headscroll/blob/main/PRIVACY.md")))
+        }, ui.vlp(8, 0))
         oc.addView(ui.button("♻️ ریست تنظیمات", false) {
             AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("همه تنظیمات به حالت اول برگرده؟")
@@ -445,6 +453,31 @@ class MainActivity : ComponentActivity() {
         col.addView(oc, ui.vlp(0, 0))
 
         return Pair(sv, col)
+    }
+
+    // ---------- افشا و رضایت ----------
+
+    private fun showAccDisclosure(force: Boolean = false, onOk: () -> Unit) {
+        if (prefs.accConsent && !force) {
+            onOk()
+            return
+        }
+        val msg = "HeadScroll برای کار کردن این دسترسی‌ها رو لازم داره:\n\n" +
+            "♿ Accessibility\n" +
+            "فقط برای اینکه به جای انگشتت روی صفحه سوایپ یا تپ بزنه (مثلاً رد کردن ریلز) و بفهمه کدوم اپ بازه. " +
+            "محتوای صفحه، متن‌ها، پسوردها و پیام‌هات خونده یا ذخیره نمیشن.\n\n" +
+            "📷 دوربین جلو\n" +
+            "فقط برای تشخیص حرکت سر و ژست دست. تصویر روی همین گوشی پردازش میشه، ذخیره یا ارسال نمیشه.\n\n" +
+            "هیچ داده‌ای به اینترنت فرستاده نمیشه و هر موقع بخوای از تنظیمات اندروید خاموشش می‌کنی."
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("قبل از ادامه")
+            .setMessage(msg)
+            .setPositiveButton(if (force) "باشه" else "قبول و ادامه") { _, _ ->
+                prefs.accConsent = true
+                onOk()
+            }
+            .setNegativeButton(if (force) null else "نه", null)
+            .show()
     }
 
     // ---------- اکشن‌ها ----------

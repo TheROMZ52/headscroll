@@ -52,6 +52,10 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("invertH", false)
         set(v) = sp.edit().putBoolean("invertH", v).apply()
 
+    var accConsent: Boolean
+        get() = sp.getBoolean("accConsent", false)
+        set(v) = sp.edit().putBoolean("accConsent", v).apply()
+
     var targets: Set<String>
         get() = sp.getStringSet("targets", setOf("instagram")) ?: setOf("instagram")
         set(v) = sp.edit().putStringSet("targets", HashSet(v)).apply()
