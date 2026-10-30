@@ -1,3 +1,5 @@
+[فارسی](README.md) · [English](README.en.md)
+
 <p align="center"><img src="docs/logo.svg" width="128" alt="HeadScroll"></p>
 
 # HeadScroll
