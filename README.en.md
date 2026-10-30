@@ -2,6 +2,7 @@
 
 # HeadScroll
 
+For the moments when your hands are busy but your feed must go on. Nod responsibly.
 An Android app for controlling short-form video feeds (Instagram Reels, TikTok, YouTube Shorts, and more) using **head movements** and **hand gestures**.
 
 ## Default gestures
